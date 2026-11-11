@@ -1,0 +1,22 @@
+{
+  "name": "scribble-motion",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "icons": "node scripts/make-icons.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dexie": "^4.4.7"
+  },
+  "devDependencies": {
+    "sharp": "^0.35.5",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.6",
+    "vite-plugin-pwa": "^2.0.0"
+  }
+}
