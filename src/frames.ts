@@ -58,6 +58,10 @@ async function menuAction(act: string): Promise<void> {
       await S.switchFrame(at);
       cb.onFrame();
     }
+  } else if (act === 'clear') {
+    if (!confirm(`Clear everything drawn on frame ${i + 1}?`)) return;
+    await S.clearFrame(i);
+    cb.onFrame();
   } else if (act === 'del') {
     await S.deleteFrame(i);
     cb.onFrame();

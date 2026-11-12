@@ -427,6 +427,24 @@ class Store {
     this.persistMeta();
   }
 
+  /** Wipe every layer of one frame back to blank paper (keeps the frame and its layers). */
+  async clearFrame(index: number): Promise<void> {
+    const f = this.project.frames[index];
+    if (!f) return;
+    for (const l of f.layers) {
+      const live = this.live.get(l.id);
+      if (live) {
+        live.getContext('2d')!.clearRect(0, 0, PW, PH);
+        this.markLayerDirty(l.id);
+      } else {
+        await db.blobs.delete(l.id);
+      }
+    }
+    this.invalidateFrame(f.id);
+    await this.makeThumb(index);
+    this.persistMeta();
+  }
+
   async moveFrame(from: number, to: number): Promise<void> {
     if (from === to || from < 0 || to < 0) return;
     const activeId = this.frame.id;
