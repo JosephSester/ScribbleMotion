@@ -54,6 +54,15 @@
       <canvas id="paper"></canvas>
       <canvas id="overlay"></canvas>
       <div id="ghostBadge" class="badge hidden">GHOST · 50%</div>
+      <div id="zoomCtrls">
+        <button id="zoomIn" aria-label="Zoom in">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-5-5"/><path d="M11 8v6"/><path d="M8 11h6"/></svg>
+        </button>
+        <button id="zoomPct" aria-label="Reset zoom">100%</button>
+        <button id="zoomOut" aria-label="Zoom out">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-5-5"/><path d="M8 11h6"/></svg>
+        </button>
+      </div>
       <div id="selToolbar" class="hidden">
         <button data-selact="flipH" aria-label="Flip horizontally"><svg viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M8 7L4 12l4 5"/><path d="M16 7l4 5-4 5"/></svg></button>
         <button data-selact="dup" aria-label="Duplicate selection"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V7a2 2 0 0 1 2-2h8"/></svg></button>

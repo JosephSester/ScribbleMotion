@@ -41,6 +41,13 @@ class Engine {
   sym: SymMode = 'off';
   persp: PerspMode = 'off';
 
+  zoom = 1;
+  panX = 0;
+  panY = 0;
+  private pointers = new Map<number, Pt>();
+  private pinch: { dist0: number; zoom0: number; c0: Pt } | null = null;
+  onViewChange: () => void = () => {};
+
   private scratch = blankCanvas();
   private strokeActive = false;
   private strokeAlpha = 1;
@@ -74,6 +81,98 @@ class Engine {
     paper.addEventListener('pointermove', (e) => this.onMove(e));
     paper.addEventListener('pointerup', (e) => this.onUp(e));
     paper.addEventListener('pointercancel', (e) => this.onUp(e));
+    paper.addEventListener(
+      'wheel',
+      (e) => {
+        e.preventDefault();
+        if (e.ctrlKey || e.metaKey) {
+          this.zoomBy(Math.exp(-e.deltaY * 0.0022));
+        } else if (this.zoom > 1) {
+          this.panX += (e.shiftKey ? e.deltaY : e.deltaX) / this.viewS;
+          this.panY += (e.shiftKey ? 0 : e.deltaY) / this.viewS;
+          this.clampPan();
+          this.render();
+          this.onViewChange();
+        }
+      },
+      { passive: false }
+    );
+  }
+
+  // ---------- zoom & pan ----------
+
+  private get viewS(): number {
+    return this.scale * this.zoom;
+  }
+
+  private clampPan(): void {
+    const maxX = PW - PW / this.zoom;
+    const maxY = PH - PH / this.zoom;
+    this.panX = Math.min(Math.max(0, maxX), Math.max(0, this.panX));
+    this.panY = Math.min(Math.max(0, maxY), Math.max(0, this.panY));
+  }
+
+  zoomBy(factor: number): void {
+    const cx = this.panX + PW / this.zoom / 2;
+    const cy = this.panY + PH / this.zoom / 2;
+    this.zoom = Math.min(8, Math.max(1, this.zoom * factor));
+    this.panX = cx - PW / this.zoom / 2;
+    this.panY = cy - PH / this.zoom / 2;
+    this.clampPan();
+    this.render();
+    this.onViewChange();
+  }
+
+  zoomReset(): void {
+    this.zoom = 1;
+    this.panX = 0;
+    this.panY = 0;
+    this.render();
+    this.onViewChange();
+  }
+
+  get zoomPct(): number {
+    return Math.round(this.zoom * 100);
+  }
+
+  private startPinch(): void {
+    this.cancelStrokeForPinch();
+    const [a, b] = [...this.pointers.values()];
+    const dist0 = Math.max(20, Math.hypot(a.x - b.x, a.y - b.y));
+    const cx = (a.x + b.x) / 2;
+    const cy = (a.y + b.y) / 2;
+    this.pinch = {
+      dist0,
+      zoom0: this.zoom,
+      c0: { x: cx / this.viewS + this.panX, y: cy / this.viewS + this.panY }
+    };
+  }
+
+  private applyPinch(): void {
+    const [a, b] = [...this.pointers.values()];
+    const p = this.pinch!;
+    const dist = Math.max(20, Math.hypot(a.x - b.x, a.y - b.y));
+    this.zoom = Math.min(8, Math.max(1, p.zoom0 * (dist / p.dist0)));
+    const cx = (a.x + b.x) / 2;
+    const cy = (a.y + b.y) / 2;
+    this.panX = p.c0.x - cx / this.viewS;
+    this.panY = p.c0.y - cy / this.viewS;
+    this.clampPan();
+    this.render();
+    this.onViewChange();
+  }
+
+  private cancelStrokeForPinch(): void {
+    if (this.strokeActive) {
+      if (!this.strokeErase) this.undoStack.pop();
+      this.strokeActive = false;
+      this.last = null;
+      this.scratch.getContext('2d')!.clearRect(0, 0, PW, PH);
+    }
+    this.shapeStart = null;
+    this.shapeCur = null;
+    this.lassoPts = null;
+    this.selGesture = null;
   }
 
   fit(): void {
@@ -92,12 +191,16 @@ class Engine {
       c.style.left = Math.floor((w - cssW) / 2) + 'px';
       c.style.top = Math.floor((h - cssH) / 2) + 'px';
     }
+    this.clampPan();
     this.render();
   }
 
   private toProj(e: PointerEvent): Pt {
     const r = this.paper.getBoundingClientRect();
-    return { x: (e.clientX - r.left) / this.scale, y: (e.clientY - r.top) / this.scale };
+    return {
+      x: (e.clientX - r.left) / this.viewS + this.panX,
+      y: (e.clientY - r.top) / this.viewS + this.panY
+    };
   }
 
   // ---------- undo ----------
@@ -191,9 +294,15 @@ class Engine {
   }
 
   private onDown(e: PointerEvent): void {
-    if (!e.isPrimary) return;
-    e.preventDefault();
     this.paper.setPointerCapture(e.pointerId);
+    const r = this.paper.getBoundingClientRect();
+    this.pointers.set(e.pointerId, { x: e.clientX - r.left, y: e.clientY - r.top });
+    if (this.pointers.size === 2) {
+      this.startPinch();
+      return;
+    }
+    if (!e.isPrimary || this.pinch) return;
+    e.preventDefault();
     const p = this.toProj(e);
 
     if (this.sel) {
@@ -248,7 +357,15 @@ class Engine {
   }
 
   private onMove(e: PointerEvent): void {
-    if (!e.isPrimary) return;
+    if (this.pointers.has(e.pointerId)) {
+      const r = this.paper.getBoundingClientRect();
+      this.pointers.set(e.pointerId, { x: e.clientX - r.left, y: e.clientY - r.top });
+    }
+    if (this.pinch && this.pointers.size >= 2) {
+      this.applyPinch();
+      return;
+    }
+    if (!e.isPrimary || this.pinch) return;
 
     if (this.selGesture && this.sel) {
       this.applySelGesture(this.toProj(e));
@@ -279,6 +396,11 @@ class Engine {
   }
 
   private onUp(e: PointerEvent): void {
+    this.pointers.delete(e.pointerId);
+    if (this.pinch) {
+      if (this.pointers.size < 2) this.pinch = null;
+      return;
+    }
     if (!e.isPrimary) return;
 
     if (this.selGesture) {
@@ -483,9 +605,9 @@ class Engine {
     const ly = (dx * sin + dy * cos) / s.scale;
     const hw = s.w / 2;
     const hh = s.h / 2;
-    const grab = 18 / this.scale / s.scale;
+    const grab = 18 / this.viewS / s.scale;
     // rotate handle above top edge
-    if (Math.hypot(lx, ly + hh + 34 / this.scale / s.scale) < grab * 1.2) return 'rotate';
+    if (Math.hypot(lx, ly + hh + 34 / this.viewS / s.scale) < grab * 1.2) return 'rotate';
     for (const [cx2, cy2] of [[-hw, -hh], [hw, -hh], [-hw, hh], [hw, hh]] as [number, number][]) {
       if (Math.hypot(lx - cx2, ly - cy2) < grab) return 'scale';
     }
@@ -604,8 +726,11 @@ class Engine {
 
   render(): void {
     const ctx = this.paper.getContext('2d')!;
-    ctx.setTransform(this.dpr * this.scale, 0, 0, this.dpr * this.scale, 0, 0);
-    ctx.clearRect(0, 0, PW, PH);
+    const s = this.viewS;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#232129';
+    ctx.fillRect(0, 0, this.paper.width, this.paper.height);
+    ctx.setTransform(this.dpr * s, 0, 0, this.dpr * s, -this.dpr * s * this.panX, -this.dpr * s * this.panY);
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, PW, PH);
 
@@ -664,9 +789,11 @@ class Engine {
 
   renderOverlay(): void {
     const ctx = this.overlay.getContext('2d')!;
-    ctx.setTransform(this.dpr * this.scale, 0, 0, this.dpr * this.scale, 0, 0);
-    ctx.clearRect(0, 0, PW, PH);
-    const px = 1 / this.scale; // one screen pixel in project units
+    const s = this.viewS;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, this.overlay.width, this.overlay.height);
+    ctx.setTransform(this.dpr * s, 0, 0, this.dpr * s, -this.dpr * s * this.panX, -this.dpr * s * this.panY);
+    const px = 1 / s; // one screen pixel in project units
 
     if (this.grid) {
       ctx.strokeStyle = 'rgba(40,40,60,0.10)';

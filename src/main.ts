@@ -827,6 +827,14 @@ async function boot(): Promise<void> {
   input('colorInput').addEventListener('change', () => useCustomColor(input('colorInput').value));
   $('scrim').addEventListener('click', closeOverlays);
 
+  $('zoomIn').addEventListener('click', () => E.zoomBy(1.5));
+  $('zoomOut').addEventListener('click', () => E.zoomBy(1 / 1.5));
+  $('zoomPct').addEventListener('click', () => E.zoomReset());
+  E.onViewChange = () => {
+    $('zoomPct').textContent = E.zoomPct + '%';
+    $('zoomPct').classList.toggle('zoomed', E.zoomPct !== 100);
+  };
+
   $('btnSaveFrame').addEventListener('click', async () => {
     await S.flushLayerSaves();
     await refreshActiveThumb();
