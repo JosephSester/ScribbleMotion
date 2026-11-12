@@ -63,6 +63,7 @@ async function menuAction(act: string): Promise<void> {
     await S.clearFrame(i);
     cb.onFrame();
   } else if (act === 'del') {
+    if (!confirm(`Delete frame ${i + 1}? This cannot be undone.`)) return;
     await S.deleteFrame(i);
     cb.onFrame();
   }
